@@ -56,6 +56,7 @@ describe("registerWebSearchTool", () => {
       "/search",
       "POST",
       {
+        compliance: "hipaa",
         query: "AI breakthroughs",
         type: "fast",
         numResults: 2,

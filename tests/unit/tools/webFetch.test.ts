@@ -52,6 +52,8 @@ describe("registerWebFetchTool", () => {
       "/contents",
       "POST",
       {
+        compliance: "hipaa",
+        maxAgeHours: -1,
         urls: ["https://example.com/page", "https://example.com/missing"],
         text: {
           maxCharacters: 500,

@@ -133,7 +133,7 @@ function liteRefusal(parameters: readonly string[]) {
     content: [
       {
         type: "text" as const,
-        text: `web_search_advanced_exa error: search type 'lite' does not support ${parameters.join(", ")}. Remove ${pronoun}, or set type to 'auto'.`,
+        text: `web_search_advanced_exa error: search type 'lite' does not support ${parameters.join(", ")}. Remove ${pronoun}; HIPAA mode requires cached retrieval.`,
       },
     ],
     isError: true as const,
@@ -158,7 +158,7 @@ Returns: Search results with page text, highlights, summaries or subpage content
         .enum(SEARCH_TYPES)
         .optional()
         .describe(
-          "Search type. 'auto' is the default and recommended type. It returns high-quality results and supports every parameter. 'lite' is the low-cost, low-latency type and serves cached content. It supports only query, numResults, category, includeDomains, excludeDomains, startPublishedDate, endPublishedDate, userLocation, moderation, textMaxCharacters and the highlights parameters. 'instant' and 'fast' are legacy types. Use 'lite' instead of 'instant'. Use 'lite' instead of 'fast', or 'auto' when the search needs a parameter 'lite' does not support.",
+          "Search type. Defaults to 'lite' for cached retrieval. HIPAA mode accepts 'lite' and the legacy 'fast' and 'instant' types; 'auto' is unavailable.",
         ),
 
       category: z
@@ -277,7 +277,7 @@ Returns: Search results with page text, highlights, summaries or subpage content
         const freshness =
           params.maxAgeHours !== undefined
             ? { maxAgeHours: params.maxAgeHours }
-            : params.type === "lite"
+            : ["lite", "fast", "instant"].includes(params.type || "lite")
               ? {}
               : { livecrawl: "fallback" as const };
 
@@ -316,7 +316,7 @@ Returns: Search results with page text, highlights, summaries or subpage content
 
         const searchRequest: ExaAdvancedSearchRequest = {
           query: params.query,
-          type: params.type || "auto",
+          type: params.type || "lite",
           numResults: params.numResults || 10,
           contents,
         };

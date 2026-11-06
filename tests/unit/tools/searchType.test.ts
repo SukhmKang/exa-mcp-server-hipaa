@@ -1,10 +1,3 @@
-/**
- * Search type handling of the search tools: which types are accepted, the
- * defaults, how a type is forwarded to the Exa API, and the parameters the
- * `lite` type refuses. Synced to the public exa-mcp-server repo and run there
- * too, so it asserts nothing hosted-only and holds both servers to one
- * behaviour.
- */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -75,30 +68,34 @@ describe("web_search_exa search type", () => {
     return server.getTool("web_search_exa");
   }
 
-  it("searches with auto when no default search type is configured", async () => {
+  it("searches with lite when no default search type is configured", async () => {
     const tool = await registerWebSearch();
     requestMock.mockResolvedValue(searchResponse);
 
     await tool.handler({ query: "AI breakthroughs" });
 
-    expect(sentRequest().type).toBe("auto");
+    expect(sentRequest().type).toBe("lite");
   });
 
-  it.each(SEARCH_TYPES)("sends the configured %s default unchanged", async (type) => {
-    const tool = await registerWebSearch(type);
-    requestMock.mockResolvedValue(searchResponse);
+  it.each(["lite", "fast", "instant"] as const)(
+    "sends the configured %s default unchanged",
+    async (type) => {
+      const tool = await registerWebSearch(type);
+      requestMock.mockResolvedValue(searchResponse);
 
-    await tool.handler({ query: "category:company Exa", numResults: 3 });
+      await tool.handler({ query: "category:company Exa", numResults: 3 });
 
-    // Every field here is one lite serves, so any configured type is valid.
-    expect(sentRequest()).toEqual({
-      query: "Exa",
-      type,
-      numResults: 3,
-      category: "company",
-      contents: { highlights: true },
-    });
-  });
+      // Every field here is one lite serves, so any configured type is valid.
+      expect(sentRequest()).toEqual({
+        compliance: "hipaa",
+        query: "Exa",
+        type,
+        numResults: 3,
+        category: "company",
+        contents: { highlights: true },
+      });
+    },
+  );
 
   it("does not let the caller choose the search type", async () => {
     const tool = await registerWebSearch("lite");
@@ -120,7 +117,7 @@ describe("web_search_advanced_exa search type", () => {
     return z.object(tool.inputSchema as Record<string, z.ZodTypeAny>);
   }
 
-  it("advertises auto and lite and describes fast and instant as legacy", async () => {
+  it("describes the HIPAA-compatible search types", async () => {
     const tool = await registerAdvancedTool();
 
     const jsonSchema = zodToJsonSchema(inputSchema(tool), { strictUnions: true }) as {
@@ -130,7 +127,7 @@ describe("web_search_advanced_exa search type", () => {
     expect(jsonSchema.properties.type.enum).toEqual([...SEARCH_TYPES]);
     expect(jsonSchema.required ?? []).not.toContain("type");
     expect(jsonSchema.properties.type.description).toContain(
-      "'instant' and 'fast' are legacy types. Use 'lite' instead of 'instant'. Use 'lite' instead of 'fast', or 'auto' when the search needs a parameter 'lite' does not support.",
+      "HIPAA mode accepts 'lite' and the legacy 'fast' and 'instant' types; 'auto' is unavailable.",
     );
   });
 
@@ -143,19 +140,20 @@ describe("web_search_advanced_exa search type", () => {
     },
   );
 
-  it("searches with auto when no type is given", async () => {
+  it("searches with lite when no type is given", async () => {
     const tool = await registerAdvancedTool();
     requestMock.mockResolvedValue(searchResponse);
 
     await tool.handler({ query: "AI breakthroughs" });
 
     expect(sentRequest()).toMatchObject({
-      type: "auto",
-      contents: { text: true, livecrawl: "fallback" },
+      type: "lite",
+      compliance: "hipaa",
+      contents: { text: true },
     });
   });
 
-  it("searches with auto when the server has a default search type configured", async () => {
+  it("searches with lite when the server has a default search type configured", async () => {
     const { registerWebSearchAdvancedTool } =
       await import("../../../src/tools/webSearchAdvanced.js");
     const server = new FakeMcpServer();
@@ -170,7 +168,7 @@ describe("web_search_advanced_exa search type", () => {
 
     await server.getTool("web_search_advanced_exa").handler({ query: "AI breakthroughs" });
 
-    expect(sentRequest().type).toBe("auto");
+    expect(sentRequest().type).toBe("lite");
   });
 
   it.each(["fast", "instant"])(
@@ -185,29 +183,18 @@ describe("web_search_advanced_exa search type", () => {
 
       expect(sentRequest()).toMatchObject({
         type,
-        contents: { text: true, livecrawl: "fallback" },
+        contents: { text: true },
       });
     },
   );
 
   it.each(["auto", "fast", "instant"])(
-    "sends the parameters lite does not serve when the type is %s",
+    "refuses incompatible HIPAA requests with type %s before transmission",
     async (type) => {
       const tool = await registerAdvancedTool();
-      requestMock.mockResolvedValue(searchResponse);
-
-      await tool.handler({
-        query: "AI breakthroughs",
-        type,
-        enableSummary: true,
-        includeText: ["rust"],
-      });
-
-      expect(sentRequest()).toMatchObject({
-        type,
-        includeText: ["rust"],
-        contents: { summary: true },
-      });
+      const result = await tool.handler({ query: "q", type, enableSummary: true });
+      expect(requestMock).not.toHaveBeenCalled();
+      expect(result).toMatchObject({ isError: true });
     },
   );
 
@@ -234,6 +221,7 @@ describe("web_search_advanced_exa search type", () => {
 
     expect((result as any).isError).toBeUndefined();
     expect(sentRequest()).toEqual({
+      compliance: "hipaa",
       query: "AI breakthroughs",
       type: "lite",
       numResults: 5,
@@ -275,7 +263,7 @@ describe("web_search_advanced_exa search type", () => {
       content: [
         {
           type: "text",
-          text: `web_search_advanced_exa error: search type 'lite' does not support ${parameter}. Remove it, or set type to 'auto'.`,
+          text: `web_search_advanced_exa error: search type 'lite' does not support ${parameter}. Remove it; HIPAA mode requires cached retrieval.`,
         },
       ],
       isError: true,
@@ -295,7 +283,7 @@ describe("web_search_advanced_exa search type", () => {
 
     expect(requestMock).not.toHaveBeenCalled();
     expect((result as any).content[0].text).toBe(
-      "web_search_advanced_exa error: search type 'lite' does not support includeText, maxAgeHours, enableSummary. Remove them, or set type to 'auto'.",
+      "web_search_advanced_exa error: search type 'lite' does not support includeText, maxAgeHours, enableSummary. Remove them; HIPAA mode requires cached retrieval.",
     );
   });
 });

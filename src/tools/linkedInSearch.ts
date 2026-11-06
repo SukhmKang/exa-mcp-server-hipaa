@@ -40,7 +40,7 @@ export function registerLinkedInSearchTool(
 
         const searchRequest: ExaSearchRequest = {
           query: searchQuery,
-          type: "auto",
+          type: "lite",
           numResults: numResults || API_CONFIG.DEFAULT_NUM_RESULTS,
           category: "people",
           contents: {

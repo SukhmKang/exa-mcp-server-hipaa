@@ -75,7 +75,7 @@ export function registerWebSearchTool(
 
       const searchRequest: ExaSearchRequest = {
         query: cleanedQuery,
-        type: config?.defaultSearchType || "auto",
+        type: config?.defaultSearchType || "lite",
         numResults: numResults || API_CONFIG.DEFAULT_NUM_RESULTS,
         ...(category && { category }),
         contents: {

@@ -11,13 +11,11 @@ export const createRequestLogger = (toolName: string) => {
     log: (message: string): void => {
       log(`[${requestId}] [${toolName}] ${message}`);
     },
-    start: (query: string): void => {
-      log(`[${requestId}] [${toolName}] Starting search for query: "${query}"`);
+    start: (_query: string): void => {
+      log(`[${requestId}] [${toolName}] Starting request`);
     },
-    error: (error: unknown): void => {
-      log(
-        `[${requestId}] [${toolName}] Error: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    error: (_error: unknown): void => {
+      log(`[${requestId}] [${toolName}] Request failed`);
     },
     complete: (): void => {
       log(`[${requestId}] [${toolName}] Successfully completed request`);

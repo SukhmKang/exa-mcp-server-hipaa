@@ -40,7 +40,7 @@ export function createExaClient(config?: Record<string, unknown>, tool?: string)
   if (tool) {
     applyClientHeaders(exa, integrationHeaders(tool, config));
   }
-  return exa;
+  return enforceHipaa(exa);
 }
 
 /**
@@ -96,3 +96,43 @@ export const API_CONFIG = {
   DEFAULT_NUM_RESULTS: 10,
   DEFAULT_MAX_CHARACTERS: 3000,
 } as const;
+
+/** Enforce the documented HIPAA request contract at the shared SDK boundary. */
+function hipaaBody(endpoint: string, method: string, body: any): Record<string, unknown> {
+  if (method !== "POST" || !["/search", "/contents"].includes(endpoint)) {
+    throw new Error("HIPAA mode supports only cached /search and /contents requests.");
+  }
+  const request = { ...body, compliance: "hipaa" };
+  if (endpoint === "/search") {
+    request.type ??= "lite";
+    if (!["lite", "fast", "instant"].includes(request.type)) {
+      throw new Error("HIPAA mode requires search type lite, fast, or instant.");
+    }
+  }
+  const contents = endpoint === "/search" ? request.contents : request;
+  if (contents?.summary != null && contents.summary !== false) {
+    throw new Error("HIPAA mode does not support summaries.");
+  }
+  if (
+    contents?.livecrawl != null ||
+    contents?.livecrawlTimeout != null ||
+    (contents?.maxAgeHours != null && contents.maxAgeHours !== -1)
+  ) {
+    throw new Error("HIPAA mode requires cached content; live fetching is unavailable.");
+  }
+  if (endpoint === "/contents") request.maxAgeHours = -1;
+  return request;
+}
+
+function enforceHipaa(exa: Exa): Exa {
+  const request = exa.request.bind(exa);
+  exa.request = async (endpoint, method, body, params, headers) =>
+    request(endpoint, method, hipaaBody(endpoint, method, body), params, headers);
+  // Streaming SDK surfaces use rawRequest rather than request. Guard both.
+  if (typeof exa.rawRequest === "function") {
+    const rawRequest = exa.rawRequest.bind(exa);
+    exa.rawRequest = async (endpoint, method = "POST", body, params, headers) =>
+      rawRequest(endpoint, method, hipaaBody(endpoint, method, body), params, headers);
+  }
+  return exa;
+}

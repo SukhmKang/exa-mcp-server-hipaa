@@ -40,7 +40,7 @@ Returns: Company information from trusted business sources.`,
 
         const searchRequest: ExaSearchRequest = {
           query: `${companyName} company`,
-          type: "auto",
+          type: "lite",
           numResults: numResults || 3,
           category: "company",
           contents: {
